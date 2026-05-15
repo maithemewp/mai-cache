@@ -15,11 +15,15 @@ defined( 'ABSPATH' ) || exit;
  *
  * Auto-bypasses caching when SCRIPT_DEBUG is true so you never debug stale
  * cache during development.
+ *
+ * @since 0.1.0
  */
 class Cache {
 
 	/**
 	 * Memoized instances keyed by prefix, for the static for() factory.
+	 *
+	 * @since 0.1.0
 	 *
 	 * @var array<string,self>
 	 */
@@ -28,12 +32,16 @@ class Cache {
 	/**
 	 * Prefix applied to all transient keys (and the filter name).
 	 *
+	 * @since 0.1.0
+	 *
 	 * @var string
 	 */
 	private string $prefix;
 
 	/**
 	 * Constructor.
+	 *
+	 * @since 0.1.0
 	 *
 	 * @param string $prefix Prefix prepended to all keys. Default 'mai'.
 	 *                       Example: prefix 'acme' + key 'popular_posts'
@@ -49,6 +57,8 @@ class Cache {
 	 * Useful for one-liners:
 	 *
 	 *     Cache::for( 'acme' )->remember( 'key', fn() => …, HOUR_IN_SECONDS );
+	 *
+	 * @since 0.1.0
 	 *
 	 * @param string $prefix
 	 *
@@ -67,6 +77,8 @@ class Cache {
 	/**
 	 * Get the prefix used by this instance.
 	 *
+	 * @since 0.1.0
+	 *
 	 * @return string
 	 */
 	public function prefix(): string {
@@ -78,6 +90,8 @@ class Cache {
 	 *
 	 * If the callback returns a WP_Error, the result is NOT cached (so a
 	 * transient failure doesn't persist).
+	 *
+	 * @since 0.1.0
 	 *
 	 * @param string   $key      Cache key (without prefix).
 	 * @param callable $callback Generator for the value if cache misses.
@@ -104,6 +118,8 @@ class Cache {
 	/**
 	 * Get a cached value, deleting it from the cache on hit (read-once).
 	 *
+	 * @since 0.1.0
+	 *
 	 * @param string $key
 	 * @param mixed  $default Returned if the key is missing.
 	 *
@@ -124,6 +140,8 @@ class Cache {
 	 * Get a cached value directly. Returns false on miss or when caching is
 	 * disabled (SCRIPT_DEBUG / can_cache filter).
 	 *
+	 * @since 0.1.0
+	 *
 	 * @param string $key
 	 *
 	 * @return mixed
@@ -138,6 +156,8 @@ class Cache {
 
 	/**
 	 * Set a cached value directly.
+	 *
+	 * @since 0.1.0
 	 *
 	 * @param string $key
 	 * @param mixed  $value
@@ -156,6 +176,8 @@ class Cache {
 	/**
 	 * Delete a cached value.
 	 *
+	 * @since 0.1.0
+	 *
 	 * @param string $key
 	 *
 	 * @return bool
@@ -166,6 +188,8 @@ class Cache {
 
 	/**
 	 * Build the fully-prefixed transient key.
+	 *
+	 * @since 0.1.0
 	 *
 	 * @param string $key
 	 *
@@ -182,6 +206,8 @@ class Cache {
 	 * - SCRIPT_DEBUG is true (dev — never want stale)
 	 * - The "{prefix}_can_cache" filter returns false
 	 *
+	 * @since 0.1.0
+	 *
 	 * @return bool
 	 */
 	public function can_cache(): bool {
@@ -192,7 +218,9 @@ class Cache {
 		/**
 		 * Filter whether caching is enabled for this prefix.
 		 *
-		 * Example: add_filter( 'bj_can_cache', '__return_false' );
+		 * Example: add_filter( 'acme_can_cache', '__return_false' );
+		 *
+		 * @since 0.1.0
 		 *
 		 * @param bool   $enabled Whether caching is enabled.
 		 * @param string $prefix  The prefix this instance uses.
