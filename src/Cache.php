@@ -35,6 +35,7 @@ class Cache {
 
 	private string $prefix;
 	private Store $store;
+	private string $group = '';
 
 	/**
 	 * @param string     $prefix Prefix prepended to all keys. Default 'mai'.
@@ -64,6 +65,18 @@ class Cache {
 	 */
 	public static function object( string $prefix = 'mai' ): self {
 		return self::instance( 'object', $prefix );
+	}
+
+	/**
+	 * Scope a finer namespace within this prefix. Returns a configured clone;
+	 * the base instance and its grouped views share the same prefix and store.
+	 *
+	 * @since 0.2.0
+	 */
+	public function group( string $group ): self {
+		$clone        = clone $this;
+		$clone->group = trim( $group, '_' );
+		return $clone;
 	}
 
 	private static function instance( string $mode, string $prefix ): self {
@@ -145,6 +158,9 @@ class Cache {
 	/**
 	 * Delete a cached value.
 	 *
+	 * Intentionally not gated by can_cache() -- invalidation is best-effort and
+	 * simply no-ops when the store is unavailable, so cleanup always attempts.
+	 *
 	 * @since 0.1.0
 	 */
 	public function delete( string $key ): bool {
@@ -152,12 +168,41 @@ class Cache {
 	}
 
 	/**
-	 * Build the fully-prefixed key.
+	 * Invalidate the current scope by rotating its version token: the whole
+	 * prefix when ungrouped, or just this group when grouped. Orphaned entries
+	 * become unreachable and age out by TTL.
+	 *
+	 * Intentionally not gated by can_cache() -- same rationale as delete().
+	 *
+	 * @since 0.2.0
+	 */
+	public function flush(): bool {
+		$scope = $this->scope();
+		$token = self::new_token();
+
+		self::$tokens[ $scope ] = $token;
+
+		return $this->store->write( $this->token_key( $scope ), $token, 0 );
+	}
+
+	/**
+	 * Build the fully-namespaced key: prefix, prefix version token, optional
+	 * group + its version token, then the user key. Rotating a token (flush)
+	 * changes every key under that scope, so old entries become unreachable.
 	 *
 	 * @since 0.1.0
 	 */
 	public function key( string $key ): string {
-		return $this->prefix . '_' . ltrim( $key, '_' );
+		$parts = [ $this->prefix, $this->token( $this->prefix ) ];
+
+		if ( '' !== $this->group ) {
+			$parts[] = $this->group;
+			$parts[] = $this->token( $this->prefix . '_' . $this->group );
+		}
+
+		$parts[] = ltrim( $key, '_' );
+
+		return implode( '_', $parts );
 	}
 
 	/**
@@ -208,5 +253,54 @@ class Cache {
 	public static function reset_runtime(): void {
 		self::$instances = [];
 		self::$tokens    = [];
+	}
+
+	/**
+	 * Current invalidation scope: "{prefix}" or "{prefix}_{group}".
+	 *
+	 * @since 0.2.0
+	 */
+	private function scope(): string {
+		return '' !== $this->group ? $this->prefix . '_' . $this->group : $this->prefix;
+	}
+
+	/**
+	 * Read (or lazily create + persist) the version token for a scope.
+	 * Memoized per scope for the request.
+	 *
+	 * @since 0.2.0
+	 */
+	private function token( string $scope ): string {
+		if ( isset( self::$tokens[ $scope ] ) ) {
+			return self::$tokens[ $scope ];
+		}
+
+		$stored = $this->store->read( $this->token_key( $scope ) );
+
+		if ( ! is_string( $stored ) || '' === $stored ) {
+			$stored = self::new_token();
+			$this->store->write( $this->token_key( $scope ), $stored, 0 );
+		}
+
+		return self::$tokens[ $scope ] = $stored;
+	}
+
+	/**
+	 * Storage key that holds a scope's version token (not itself versioned).
+	 *
+	 * @since 0.2.0
+	 */
+	private function token_key( string $scope ): string {
+		return $scope . '__token';
+	}
+
+	/**
+	 * Generate a fresh unique version token (12 lowercase hex chars). Unique
+	 * per generation, so a regenerated token never collides with old keys.
+	 *
+	 * @since 0.2.0
+	 */
+	private static function new_token(): string {
+		return bin2hex( random_bytes( 6 ) );
 	}
 }

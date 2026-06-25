@@ -30,7 +30,7 @@ final class CacheTest extends TestCase {
 		$cache = new Cache( 'mai', $store );
 
 		$cache->remember( 'k', fn() => 'err', 60 );
-		$this->assertSame( [], $store->data ); // nothing stored
+		$this->assertFalse( $cache->get( 'k' ) ); // WP_Error value was not cached
 	}
 
 	public function test_object_mode_is_noop_when_store_unavailable(): void {
