@@ -1097,6 +1097,21 @@ mai_cache( 'menus' )->flush();   // bust every menu cache
 mai_cache( 'menus' )->delete( $location ); // bust one entry
 mai_cache()->flush();            // bust everything under this prefix
 ```
+
+## Read-once state (flash messages, one-time tokens)
+
+Beyond performance caching, `pull()` reads a value and deletes it in one call, which fits consume-once state. Use the transient mode (not object-only) and a dedicated prefix so content flushes never touch it. It is best-effort: never store state that must survive cache eviction (use options or user meta for that).
+
+```php
+// Store a one-time admin notice, then redirect.
+mai_cache( 'flash' )->set( 'saved_' . get_current_user_id(), 'Settings saved.', 5 * MINUTE_IN_SECONDS );
+
+// On the next page load, show it exactly once: pull() returns it and deletes it.
+$notice = mai_cache( 'flash' )->pull( 'saved_' . get_current_user_id() );
+if ( $notice ) {
+    printf( '<div class="notice notice-success"><p>%s</p></div>', esc_html( $notice ) );
+}
+```
 ````
 
 - [ ] **Step 4: Verify the suite still passes**
