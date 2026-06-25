@@ -92,13 +92,14 @@ New or changed public surface (everything else in 0.1.0 is unchanged):
 - `->group(string $group): self` — scope to a sub-group; returns a configured instance (new).
 - `->flush(): bool` — rotate the current scope's version token (prefix-level, or group-level when grouped) (new).
 - `Cache::has_persistent_object_cache(): bool` — static helper (new).
-- `->remember/forget/get/set/delete/key/can_cache/prefix` — same signatures; `get`/`set`/`delete` and `key()` now build the versioned key.
+- `->remember/pull/get/set/delete/key/can_cache/prefix` — `get`/`set`/`delete` and `key()` now build the versioned key. `forget()` is renamed to `pull()` (read-once / consume), matching Laravel's `pull()`; see Backward compatibility.
 
 ## Backward compatibility
 
 - Existing `Cache::for($p)->remember(...)` call sites are unaffected in behavior. The only internal change is that keys now carry a version-token segment.
 - Consequence: on upgrade from 0.1.0, the old un-versioned keys no longer match, so each is treated as a one-time miss and recomputed (it then ages out by TTL). This is a single cold-cache event on deploy, called out in the changelog.
 - The bootstrap is untouched. `init.php` bumps its registered version string `0.1.0` → `0.2.0`; older bundled copies in other plugins keep working, and the highest-version copy (this one) is what loads.
+- `forget()` is renamed to `pull()`. This is the one non-additive change, and it is safe because 0.1.0 has no consumers (verified across all mai plugins and local packages: none require or call mai-cache), so no deprecated alias is kept.
 
 ## Testing
 

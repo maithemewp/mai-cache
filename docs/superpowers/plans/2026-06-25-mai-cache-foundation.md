@@ -435,7 +435,7 @@ git commit -m "feat: add ObjectCacheStore (object-cache-only, no DB fallback)"
   - `static for( string $prefix = 'mai' ): self` (transient-backed)
   - `static object( string $prefix = 'mai' ): self` (object-cache-only)
   - `remember( string $key, callable $callback, int $expire ): mixed`
-  - `forget( string $key, mixed $default = null ): mixed`
+  - `pull( string $key, mixed $default = null ): mixed` (read-once; renamed from 0.1.0's `forget()`)
   - `get( string $key ): mixed` / `set( string $key, mixed $value, int $expire ): bool` / `delete( string $key ): bool`
   - `key( string $key ): string`
   - `can_cache(): bool`
@@ -655,11 +655,12 @@ class Cache {
 	}
 
 	/**
-	 * Get a cached value, deleting it on hit (read-once).
+	 * Get a cached value, deleting it on hit (read-once / consume).
+	 * Renamed from 0.1.0's forget() to match Laravel's pull() semantics.
 	 *
-	 * @since 0.1.0
+	 * @since 0.2.0
 	 */
-	public function forget( string $key, mixed $default = null ): mixed {
+	public function pull( string $key, mixed $default = null ): mixed {
 		$cached = $this->get( $key );
 
 		if ( false !== $cached ) {
@@ -1051,6 +1052,7 @@ Insert this block directly beneath the `Versioning: ...` line and above `## [0.1
 ### Changed
 
 - Stored keys now carry a version-token segment. On upgrade from 0.1.0, existing cached entries are treated as a one-time miss and recomputed; they then age out by TTL.
+- Renamed `forget()` to `pull()` (read-once / consume), matching Laravel's `pull()`. No alias is kept, since 0.1.0 had no consumers.
 
 ### Compatibility
 
