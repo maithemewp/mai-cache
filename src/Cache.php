@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai\Cache\Cache — remember()-pattern wrapper around WordPress transients.
+ * Mai\Cache\Cache — remember()-pattern cache over a pluggable Store.
  *
  * @package maithemewp/mai-cache
  * @license GPL-2.0-or-later
@@ -11,93 +11,77 @@ namespace Mai\Cache;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Transient-backed cache with a Laravel-style remember() pattern.
- *
- * Auto-bypasses caching when SCRIPT_DEBUG is true so you never debug stale
- * cache during development.
+ * Transient- or object-cache-backed cache with a Laravel-style remember()
+ * pattern. Auto-bypasses caching when SCRIPT_DEBUG is true, and (in object
+ * mode) when there is no persistent object cache.
  *
  * @since 0.1.0
  */
 class Cache {
 
 	/**
-	 * Memoized instances keyed by prefix, for the static for() factory.
-	 *
-	 * @since 0.1.0
+	 * Memoized instances keyed by "mode:prefix".
 	 *
 	 * @var array<string,self>
 	 */
 	private static array $instances = [];
 
 	/**
-	 * Prefix applied to all transient keys (and the filter name).
+	 * Memoized version tokens keyed by scope (used from 0.2.0).
 	 *
-	 * @since 0.1.0
-	 *
-	 * @var string
+	 * @var array<string,string>
 	 */
+	private static array $tokens = [];
+
 	private string $prefix;
+	private Store $store;
 
 	/**
-	 * Constructor.
+	 * @param string     $prefix Prefix prepended to all keys. Default 'mai'.
+	 * @param Store|null  $store  Storage backend. Defaults to TransientStore.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $prefix Prefix prepended to all keys. Default 'mai'.
-	 *                       Example: prefix 'acme' + key 'popular_posts'
-	 *                       → transient key 'acme_popular_posts'.
 	 */
-	public function __construct( string $prefix = 'mai' ) {
+	public function __construct( string $prefix = 'mai', ?Store $store = null ) {
 		$this->prefix = trim( $prefix, '_' );
+		$this->store  = $store ?? new TransientStore();
 	}
 
 	/**
-	 * Get (or create) the memoized instance for a given prefix.
-	 *
-	 * Useful for one-liners:
-	 *
-	 *     Cache::for( 'acme' )->remember( 'key', fn() => …, HOUR_IN_SECONDS );
+	 * Transient-backed instance (Redis when present, DB fallback).
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $prefix
-	 *
-	 * @return self
 	 */
 	public static function for( string $prefix = 'mai' ): self {
-		$prefix = trim( $prefix, '_' );
+		return self::instance( 'transient', $prefix );
+	}
 
-		if ( ! isset( self::$instances[ $prefix ] ) ) {
-			self::$instances[ $prefix ] = new self( $prefix );
+	/**
+	 * Object-cache-only instance (wp_cache_*, no DB fallback). A no-op when
+	 * there is no persistent object cache.
+	 *
+	 * @since 0.2.0
+	 */
+	public static function object( string $prefix = 'mai' ): self {
+		return self::instance( 'object', $prefix );
+	}
+
+	private static function instance( string $mode, string $prefix ): self {
+		$prefix = trim( $prefix, '_' );
+		$id     = $mode . ':' . $prefix;
+
+		if ( ! isset( self::$instances[ $id ] ) ) {
+			$store                  = 'object' === $mode ? new ObjectCacheStore() : new TransientStore();
+			self::$instances[ $id ] = new self( $prefix, $store );
 		}
 
-		return self::$instances[ $prefix ];
+		return self::$instances[ $id ];
 	}
 
 	/**
-	 * Get the prefix used by this instance.
+	 * Get a cached value, or compute + cache it. A WP_Error result is not cached.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @return string
-	 */
-	public function prefix(): string {
-		return $this->prefix;
-	}
-
-	/**
-	 * Get a cached value, or compute + cache it via the callback.
-	 *
-	 * If the callback returns a WP_Error, the result is NOT cached (so a
-	 * transient failure doesn't persist).
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string   $key      Cache key (without prefix).
-	 * @param callable $callback Generator for the value if cache misses.
-	 * @param int      $expire   TTL in seconds.
-	 *
-	 * @return mixed The cached value or the callback result.
 	 */
 	public function remember( string $key, callable $callback, int $expire ): mixed {
 		$cached = $this->get( $key );
@@ -116,16 +100,12 @@ class Cache {
 	}
 
 	/**
-	 * Get a cached value, deleting it from the cache on hit (read-once).
+	 * Get a cached value, deleting it on hit (read-once / consume).
+	 * Renamed from 0.1.0's forget() to match Laravel's pull() semantics.
 	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $key
-	 * @param mixed  $default Returned if the key is missing.
-	 *
-	 * @return mixed
+	 * @since 0.2.0
 	 */
-	public function forget( string $key, mixed $default = null ): mixed {
+	public function pull( string $key, mixed $default = null ): mixed {
 		$cached = $this->get( $key );
 
 		if ( false !== $cached ) {
@@ -137,63 +117,44 @@ class Cache {
 	}
 
 	/**
-	 * Get a cached value directly. Returns false on miss or when caching is
-	 * disabled (SCRIPT_DEBUG / can_cache filter).
+	 * Get a cached value. Returns false on miss or when caching is disabled.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $key
-	 *
-	 * @return mixed
 	 */
 	public function get( string $key ): mixed {
 		if ( ! $this->can_cache() ) {
 			return false;
 		}
 
-		return get_transient( $this->key( $key ) );
+		return $this->store->read( $this->key( $key ) );
 	}
 
 	/**
-	 * Set a cached value directly.
+	 * Set a cached value. Returns false when caching is disabled.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $key
-	 * @param mixed  $value
-	 * @param int    $expire TTL in seconds.
-	 *
-	 * @return bool True if the value was set; false if caching is disabled.
 	 */
 	public function set( string $key, mixed $value, int $expire ): bool {
 		if ( ! $this->can_cache() ) {
 			return false;
 		}
 
-		return set_transient( $this->key( $key ), $value, absint( $expire ) );
+		return $this->store->write( $this->key( $key ), $value, max( 0, $expire ) );
 	}
 
 	/**
 	 * Delete a cached value.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $key
-	 *
-	 * @return bool
 	 */
 	public function delete( string $key ): bool {
-		return delete_transient( $this->key( $key ) );
+		return $this->store->remove( $this->key( $key ) );
 	}
 
 	/**
-	 * Build the fully-prefixed transient key.
+	 * Build the fully-prefixed key.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @param string $key
-	 *
-	 * @return string
 	 */
 	public function key( string $key ): string {
 		return $this->prefix . '_' . ltrim( $key, '_' );
@@ -202,29 +163,50 @@ class Cache {
 	/**
 	 * Whether caching is currently allowed.
 	 *
-	 * Disabled when:
-	 * - SCRIPT_DEBUG is true (dev — never want stale)
-	 * - The "{prefix}_can_cache" filter returns false
+	 * Disabled when SCRIPT_DEBUG is true, when the store cannot persist
+	 * (object mode without a persistent object cache), or when the
+	 * "{prefix}_can_cache" filter returns false.
 	 *
 	 * @since 0.1.0
-	 *
-	 * @return bool
 	 */
 	public function can_cache(): bool {
 		if ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) {
 			return false;
 		}
 
-		/**
-		 * Filter whether caching is enabled for this prefix.
-		 *
-		 * Example: add_filter( 'acme_can_cache', '__return_false' );
-		 *
-		 * @since 0.1.0
-		 *
-		 * @param bool   $enabled Whether caching is enabled.
-		 * @param string $prefix  The prefix this instance uses.
-		 */
+		if ( ! $this->store->available() ) {
+			return false;
+		}
+
 		return (bool) apply_filters( $this->prefix . '_can_cache', true, $this->prefix );
+	}
+
+	/**
+	 * Get the prefix used by this instance.
+	 *
+	 * @since 0.1.0
+	 */
+	public function prefix(): string {
+		return $this->prefix;
+	}
+
+	/**
+	 * Whether a persistent object cache (e.g. Redis) is in use.
+	 *
+	 * @since 0.2.0
+	 */
+	public static function has_persistent_object_cache(): bool {
+		return (bool) wp_using_ext_object_cache();
+	}
+
+	/**
+	 * Reset memoized instances and version tokens. For tests and long-running
+	 * processes (e.g. WP-CLI) that must not hold stale state across boundaries.
+	 *
+	 * @since 0.2.0
+	 */
+	public static function reset_runtime(): void {
+		self::$instances = [];
+		self::$tokens    = [];
 	}
 }
