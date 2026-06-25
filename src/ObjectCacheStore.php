@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai\Cache\ObjectCacheStore — object-cache-only Store (no DB fallback).
+ * Mai\Cache\ObjectCacheStore - object-cache-only Store (no DB fallback).
  *
  * @package maithemewp/mai-cache
  * @license GPL-2.0-or-later

@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai\Cache\Store — raw storage contract behind the Cache facade.
+ * Mai\Cache\Store - raw storage contract behind the Cache facade.
  *
  * @package maithemewp/mai-cache
  * @license GPL-2.0-or-later

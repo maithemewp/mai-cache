@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai\Cache\TransientStore — transient-backed Store (Redis when present, DB otherwise).
+ * Mai\Cache\TransientStore - transient-backed Store (Redis when present, DB otherwise).
  *
  * @package maithemewp/mai-cache
  * @license GPL-2.0-or-later

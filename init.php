@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai Cache — bootstrap.
+ * Mai Cache - bootstrap.
  *
  * Loaded automatically by Composer (via "autoload": { "files": [...] })
  * when each plugin's vendor/autoload.php is required.
@@ -9,11 +9,11 @@
  * On first request for any Mai\Cache\* class, the autoloader picks the highest
  * registered version's src/ directory and loads from there.
  *
- * Bootstrap protocol — FROZEN. Never change Mai_Cache_Bootstrap::register()'s
+ * Bootstrap protocol - FROZEN. Never change Mai_Cache_Bootstrap::register()'s
  * signature. Old plugins out in the wild call the original signature on
  * whichever bootstrap loaded first.
  *
- * @see https://github.com/maithemewp/mai-logger — the original pattern.
+ * @see https://github.com/maithemewp/mai-logger - the original pattern.
  *
  * @since 0.1.0
  */

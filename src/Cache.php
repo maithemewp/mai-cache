@@ -1,6 +1,6 @@
 <?php
 /**
- * Mai\Cache\Cache — remember()-pattern cache over a pluggable Store.
+ * Mai\Cache\Cache - remember()-pattern cache over a pluggable Store.
  *
  * @package maithemewp/mai-cache
  * @license GPL-2.0-or-later
