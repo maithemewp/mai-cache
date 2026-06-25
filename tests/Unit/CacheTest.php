@@ -56,4 +56,21 @@ final class CacheTest extends TestCase {
 		Functions\when( 'wp_using_ext_object_cache' )->justReturn( true );
 		$this->assertTrue( Cache::has_persistent_object_cache() );
 	}
+
+	public function test_pull_returns_value_then_deletes_it(): void {
+		$this->allowCaching();
+		$store = new ArrayStore();
+		$cache = new Cache( 'mai', $store );
+
+		$cache->set( 'token', 'once', 60 );
+		$this->assertSame( 'once', $cache->pull( 'token' ) ); // returns the value
+		$this->assertFalse( $cache->get( 'token' ) );          // and it is gone
+	}
+
+	public function test_pull_returns_default_on_miss(): void {
+		$this->allowCaching();
+		$cache = new Cache( 'mai', new ArrayStore() );
+
+		$this->assertSame( 'fallback', $cache->pull( 'missing', 'fallback' ) );
+	}
 }

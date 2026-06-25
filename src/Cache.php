@@ -71,7 +71,7 @@ class Cache {
 		$id     = $mode . ':' . $prefix;
 
 		if ( ! isset( self::$instances[ $id ] ) ) {
-			$store                  = 'object' === $mode ? new ObjectCacheStore() : new TransientStore();
+			$store = 'object' === $mode ? new ObjectCacheStore() : new TransientStore();
 			self::$instances[ $id ] = new self( $prefix, $store );
 		}
 
