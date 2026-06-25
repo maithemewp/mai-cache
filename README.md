@@ -2,14 +2,14 @@
 
 `remember()`-pattern wrapper around WordPress transients. Auto-bypasses caching during `SCRIPT_DEBUG` so you never debug stale data.
 
-Versioned and drop-in safe — multiple plugins on the same WordPress install can each bundle their own copy of `mai-cache`; the highest registered version wins at runtime via a shared bootstrap registry (same pattern as [maithemewp/mai-logger](https://github.com/maithemewp/mai-logger)).
+Versioned and drop-in safe: multiple plugins on the same WordPress install can each bundle their own copy of `mai-cache`; the highest registered version wins at runtime via a shared bootstrap registry (same pattern as [maithemewp/mai-logger](https://github.com/maithemewp/mai-logger)).
 
 ---
 
 ## Requirements
 
 - **PHP 8.1+**
-- **WordPress** — uses `ABSPATH` as a load guard; bootstrap autoload runs from Composer's `vendor/autoload.php`.
+- **WordPress** (uses `ABSPATH` as a load guard; bootstrap autoload runs from Composer's `vendor/autoload.php`).
 
 ---
 
@@ -66,15 +66,19 @@ $value = $cache->remember( 'popular_posts', fn() => …, HOUR_IN_SECONDS );
 | Method | Returns | Notes |
 |--------|---------|-------|
 | `new Cache(string $prefix = 'mai')` | `Cache` | All keys are stored as `{prefix}_{key}`. |
-| `static for(string $prefix = 'mai')` | `Cache` | Memoized factory — same prefix returns the same instance. |
+| `static for(string $prefix = 'mai')` | `Cache` | Memoized factory: same prefix returns the same instance. Transient-backed (Redis when present, DB fallback otherwise). |
+| `static object(string $prefix = 'mai')` | `Cache` | Object-cache-only factory: uses `wp_cache_*` with no DB fallback. No-op when there is no persistent object cache. |
 | `prefix()` | `string` | The instance's prefix. |
 | `remember(string $key, callable $callback, int $expire)` | `mixed` | Get cached value; on miss, run callback and cache the result. WP_Error results are NOT cached. |
-| `forget(string $key, mixed $default = null)` | `mixed` | Get value and delete it (read-once). Returns `$default` if missing. |
+| `pull(string $key, mixed $default = null)` | `mixed` | Read-once: get value and delete it in one call. Returns `$default` if missing. |
 | `get(string $key)` | `mixed` | Direct read. Returns `false` on miss or when caching is disabled. |
 | `set(string $key, mixed $value, int $expire)` | `bool` | Direct write. Returns `false` when caching is disabled. |
 | `delete(string $key)` | `bool` | Direct delete. |
 | `key(string $key)` | `string` | Builds the fully-prefixed transient key. |
+| `group(string $area)` | `Cache` | Return a scoped instance for the given sub-group (shares the same backing store). |
+| `flush()` | `bool` | Invalidate all entries under the current prefix or group by rotating the version token. |
 | `can_cache()` | `bool` | False when SCRIPT_DEBUG is on or `{prefix}_can_cache` filter returns false. |
+| `static has_persistent_object_cache()` | `bool` | True when WordPress is using an external object cache (e.g. Redis). |
 
 ---
 
@@ -152,7 +156,7 @@ $weather = Cache::for( 'acme' )->remember(
     'weather_orlando',
     function () {
         $r = wp_remote_get( 'https://api.example.com/weather/orlando' );
-        if ( is_wp_error( $r ) ) return $r; // not cached — try again next request
+        if ( is_wp_error( $r ) ) return $r; // not cached; try again next request
         return json_decode( wp_remote_retrieve_body( $r ), true );
     },
     15 * MINUTE_IN_SECONDS
@@ -164,8 +168,9 @@ WP_Error responses are deliberately not cached, so a transient failure doesn't g
 ### Read-once / single-use values
 
 ```php
-// Use forget() for things like a one-time notice payload or a flash message.
-$message = Cache::for( 'acme' )->forget( 'flash_admin_message', '' );
+// Use pull() for things like a one-time notice payload or a flash message.
+// pull() returns the value and deletes it in one call, so it shows exactly once.
+$message = Cache::for( 'acme' )->pull( 'flash_admin_message', '' );
 if ( $message ) {
     echo '<div class="notice notice-info">' . esc_html( $message ) . '</div>';
 }
@@ -188,7 +193,7 @@ add_action( 'save_post', function ( $post_id ) {
 $theme_cache = Cache::for( 'acme_theme' );
 $cli_cache   = Cache::for( 'acme_cli' );
 
-// Different namespaces — no key collisions across concerns.
+// Different namespaces, no key collisions across concerns.
 $theme_cache->set( 'rebuild_timestamp', time(), DAY_IN_SECONDS );
 $cli_cache->set( 'migration_progress', $progress, HOUR_IN_SECONDS );
 ```
@@ -203,7 +208,7 @@ add_filter( 'acme_can_cache', '__return_false' );
 define( 'SCRIPT_DEBUG', true );
 ```
 
-`SCRIPT_DEBUG` is checked automatically — when true, every `get()` returns `false` and `set()` is a no-op. No more "why is this still showing the old value" debugging sessions.
+`SCRIPT_DEBUG` is checked automatically: when true, every `get()` returns `false` and `set()` is a no-op. No more "why is this still showing the old value" debugging sessions.
 
 ### Direct get / set when you need it
 
@@ -216,13 +221,13 @@ if ( false === ( $value = $cache->get( 'key' ) ) ) {
 }
 ```
 
-Equivalent to `remember()` but spelled out — useful when the cache write should be conditional on more than just `is_wp_error`.
+Equivalent to `remember()` but spelled out; useful when the cache write should be conditional on more than just `is_wp_error`.
 
 ---
 
 ## Real-world WordPress recipes
 
-### WP-CLI batch processing — memoize a queue
+### WP-CLI batch processing: memoize a queue
 
 ```php
 use Mai\Cache\Cache;
@@ -319,7 +324,7 @@ Plugin B (vendor/maithemewp/mai-cache @ 0.2.0)
        Both plugins use 0.2.0
 ```
 
-**Bootstrap protocol is frozen.** Never change `Mai_Cache_Bootstrap::register()`'s signature — old bundled copies in the wild will call the original signature on whichever bootstrap loaded first.
+**Bootstrap protocol is frozen.** Never change `Mai_Cache_Bootstrap::register()`'s signature; old bundled copies in the wild will call the original signature on whichever bootstrap loaded first.
 
 ---
 
