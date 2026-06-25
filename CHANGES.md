@@ -4,6 +4,26 @@ All notable changes to `mai-cache` are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-25
+
+### Added
+
+- `Cache::object( $prefix )`: object-cache-only mode (`wp_cache_*`) with no DB fallback; a no-op when there is no persistent object cache, so it never adds database write load.
+- `Cache::for()` and `Cache::object()` share one method surface via an internal `Store` strategy (`TransientStore`, `ObjectCacheStore`).
+- `group( $group )` plus `flush()`: token-based group invalidation. `flush()` busts the whole prefix; `group( 'area' )->flush()` busts just that area. Per-key `delete()` remains for single entries.
+- `Cache::has_persistent_object_cache()`: static helper over `wp_using_ext_object_cache()`.
+- `Cache::reset_runtime()`: clears memoized instances and version tokens (for tests and long-running processes).
+- First unit-test suite (PHPUnit + Brain Monkey).
+
+### Changed
+
+- Stored keys now carry a version-token segment. On upgrade from 0.1.0, existing cached entries are treated as a one-time miss and recomputed; they then age out by TTL.
+- Renamed `forget()` to `pull()` (read-once / consume), matching Laravel's `pull()`. No alias is kept, since 0.1.0 had no consumers.
+
+### Compatibility
+
+- Backward compatible. `Cache::for( $prefix )` and `new Cache( $prefix )` behave as before. The `Mai_Cache_Bootstrap` signature is unchanged.
+
 ## [0.1.0] — 2026-05-15
 
 ### Added
