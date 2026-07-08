@@ -1,0 +1,12 @@
+# Strip dev-only files from the Composer dist archive (GitHub zipball / git
+# archive), so a bundled copy of this package in a consumer's vendor/ tree
+# carries no test/CI/docs cruft to production. Affects archive-based installs
+# only; a standalone working-tree checkout ignores export-ignore. Takes effect
+# for versions tagged after this file is added.
+/.github          export-ignore
+/.gitattributes   export-ignore
+/.gitignore       export-ignore
+/bin              export-ignore
+/docs             export-ignore
+/tests            export-ignore
+/phpunit.xml.dist export-ignore
