@@ -81,4 +81,22 @@ final class SwrTest extends TestCase {
 			'bump() must write the post token despite the can_cache() gate'
 		);
 	}
+	public function test_a_plain_entry_is_invisible_to_read_swr(): void {
+		$c = $this->cache();
+		$c->set( 'k', 'plain', 3600 );
+		// Same envelope, but _v is null: nobody stamped a version on it, so
+		// serving it as stale would be inventing one. It reads as cold.
+		$this->assertNull( $c->read_swr( 'k', $c->version( [ 'post' ] ) ) );
+		$this->assertSame( 'plain', $c->get( 'k' ) ); // still a perfectly good plain entry
+	}
+
+	public function test_a_stored_false_is_fresh_not_cold(): void {
+		$c = $this->cache();
+		$v = $c->version( [ 'post' ] );
+		$c->write_swr( 'k', false, $v, 3600 );
+		$r = $c->read_swr( 'k', $v );
+		$this->assertNotNull( $r );
+		$this->assertFalse( $r['value'] );
+		$this->assertTrue( $r['fresh'] );
+	}
 }

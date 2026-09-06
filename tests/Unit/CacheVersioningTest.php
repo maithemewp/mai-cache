@@ -12,16 +12,16 @@ final class CacheVersioningTest extends TestCase {
 		Functions\when( 'is_wp_error' )->justReturn( false );
 	}
 
-	public function test_key_includes_a_version_token(): void {
+	public function test_key_includes_a_format_segment_and_a_version_token(): void {
 		$this->allowCaching();
 		$cache = new Cache( 'mai', new ArrayStore() );
-		$this->assertMatchesRegularExpression( '/^mai_[0-9a-f]{12}_thing$/', $cache->key( 'thing' ) );
+		$this->assertMatchesRegularExpression( '/^mai_e1_[0-9a-f]{12}_thing$/', $cache->key( 'thing' ) );
 	}
 
 	public function test_grouped_key_includes_group_and_its_token(): void {
 		$this->allowCaching();
 		$cache = ( new Cache( 'mai', new ArrayStore() ) )->group( 'menu' );
-		$this->assertMatchesRegularExpression( '/^mai_[0-9a-f]{12}_menu_[0-9a-f]{12}_primary$/', $cache->key( 'primary' ) );
+		$this->assertMatchesRegularExpression( '/^mai_e1_[0-9a-f]{12}_menu_[0-9a-f]{12}_primary$/', $cache->key( 'primary' ) );
 	}
 
 	public function test_token_is_stable_across_reads(): void {

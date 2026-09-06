@@ -73,4 +73,63 @@ final class CacheTest extends TestCase {
 
 		$this->assertSame( 'fallback', $cache->pull( 'missing', 'fallback' ) );
 	}
+	/**
+	 * The bug 0.4.0 fixes. The store's own miss sentinel is false, so before
+	 * envelopes a stored false looked like a miss and remember() re-ran its
+	 * callback on every request -- for a condition that answers true/false,
+	 * that is every visitor on one side of the answer, forever.
+	 */
+	public function test_a_cached_false_is_a_hit(): void {
+		$this->allowCaching();
+		$cache = new Cache( 'mai', new ArrayStore() );
+		$calls = 0;
+		$cb    = function () use ( &$calls ) { $calls++; return false; };
+
+		$this->assertFalse( $cache->remember( 'flag', $cb, 60 ) );
+		$this->assertFalse( $cache->remember( 'flag', $cb, 60 ) );
+		$this->assertSame( 1, $calls ); // second call was served from cache
+	}
+
+	public function test_has_tells_a_stored_false_from_a_miss(): void {
+		$this->allowCaching();
+		$cache = new Cache( 'mai', new ArrayStore() );
+
+		$this->assertFalse( $cache->has( 'flag' ) );
+		$cache->set( 'flag', false, 60 );
+		$this->assertTrue( $cache->has( 'flag' ) );
+		$this->assertFalse( $cache->get( 'flag' ) ); // the public contract is unchanged
+	}
+
+	public function test_pull_returns_a_stored_false_rather_than_the_default(): void {
+		$this->allowCaching();
+		$cache = new Cache( 'mai', new ArrayStore() );
+
+		$cache->set( 'flag', false, 60 );
+		$this->assertFalse( $cache->pull( 'flag', 'default' ) );
+		$this->assertFalse( $cache->has( 'flag' ) ); // and it is gone
+	}
+
+	public function test_a_raw_pre_envelope_value_reads_as_a_miss(): void {
+		$this->allowCaching();
+		$store = new ArrayStore();
+		$cache = new Cache( 'mai', $store );
+
+		// What a pre-0.4.0 build would have written: the bare value.
+		$store->data[ $cache->key( 'legacy' ) ] = 'bare';
+
+		$this->assertFalse( $cache->has( 'legacy' ) );
+		$this->assertFalse( $cache->get( 'legacy' ) );
+		$this->assertSame( 'fresh', $cache->remember( 'legacy', fn() => 'fresh', 60 ) );
+		$this->assertSame( 'fresh', $cache->get( 'legacy' ) ); // rewritten wrapped
+	}
+
+	public function test_has_is_false_when_caching_is_disabled(): void {
+		Functions\when( 'apply_filters' )->alias( fn( $tag, $value = null ) => $value );
+		$store            = new ArrayStore();
+		$store->available = false;
+		$cache            = new Cache( 'mai', $store );
+
+		$cache->set( 'k', 'v', 60 );
+		$this->assertFalse( $cache->has( 'k' ) );
+	}
 }
