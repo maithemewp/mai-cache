@@ -34,6 +34,13 @@ class Cache {
 	private static array $tokens = [];
 
 	/**
+	 * Replacement clock for tests, or null to use time().
+	 *
+	 * @since 0.5.0
+	 */
+	private static ?\Closure $clock = null;
+
+	/**
 	 * Storage schema version, present in every key (from 0.4.0).
 	 *
 	 * Bumped whenever the shape of a stored value changes -- s2, s3 and so on,
@@ -441,7 +448,7 @@ class Cache {
 	}
 
 	/**
-	 * Reset memoized instances and version tokens. For tests and long-running
+	 * Reset memoized instances, version tokens and the test clock. For tests and long-running
 	 * processes (e.g. WP-CLI) that must not hold stale state across boundaries.
 	 *
 	 * @since 0.2.0
@@ -449,6 +456,29 @@ class Cache {
 	public static function reset_runtime(): void {
 		self::$instances = [];
 		self::$tokens    = [];
+		self::$clock     = null;
+	}
+
+	/**
+	 * Current time as a Unix timestamp. Code in this package that needs the
+	 * time reads it here, so a test can control it with set_clock().
+	 *
+	 * @since 0.5.0
+	 */
+	public static function now(): int {
+		return null === self::$clock ? time() : (int) ( self::$clock )();
+	}
+
+	/**
+	 * Replace the clock that now() reads. Pass null to go back to time().
+	 * For tests; reset_runtime() also restores it.
+	 *
+	 * @since 0.5.0
+	 *
+	 * @param \Closure|null $clock Returns a Unix timestamp.
+	 */
+	public static function set_clock( ?\Closure $clock ): void {
+		self::$clock = $clock;
 	}
 
 	/**
