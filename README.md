@@ -126,7 +126,7 @@ mai_cache( 'menus' )->delete( $location ); // bust one entry
 mai_cache()->flush();            // bust everything under this prefix
 ```
 
-`flush()` rotates the token, so the old entries can no longer be read. It then deletes their rows. With the default transient store and no persistent object cache, that removes the old rows from `wp_options` in batches of 1000. With a persistent object cache it does nothing, because the object cache expires its own keys.
+`flush()` rotates the token, so the old entries can no longer be read. It then deletes their rows. With the default transient store and no persistent object cache, that removes the old rows from `wp_options`, 1000 rows at a time. With a persistent object cache it does nothing, because the object cache expires its own keys.
 
 A custom store can opt in by implementing `Mai\Cache\PrefixDelete`, which has one method: `delete_prefix( string $prefix ): int`. A store without it is skipped, and its old entries age out by TTL.
 
@@ -137,12 +137,16 @@ A custom store can opt in by implementing `Mai\Cache\PrefixDelete`, which has on
 For content that is costly to build, serve the old copy while one request builds the new one. Each entry is stamped with a version, and `read_swr()` tells you whether the copy you got is current.
 
 ```php
+use Mai\Cache\Cache;
+
 $cache   = Cache::for( 'acme' );
 $version = $cache->version( [ 'post' ] );
 $hit     = $cache->read_swr( 'archive_html', $version );
 
 if ( null === $hit || ! $hit['fresh'] ) {
-    // Only one request rebuilds. The rest keep serving the old copy.
+    // With a persistent object cache, lock() lets only one request rebuild
+    // and the rest keep serving the old copy. Without one, each request
+    // takes its own lock, so several may rebuild at once.
     if ( $cache->lock( 'archive_html' ) ) {
         $html = build_archive();
 
@@ -173,7 +177,7 @@ To test age-based staleness without waiting, replace the clock:
 
 ```php
 $now = 1_000_000;
-Cache::set_clock( fn() => $now );
+Cache::set_clock( function () use ( &$now ) { return $now; } );
 
 $cache->write_swr( 'key', 'value', $version, 60 );
 
