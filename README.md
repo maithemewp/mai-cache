@@ -72,7 +72,7 @@ $value = $cache->remember( 'popular_posts', fn() => …, HOUR_IN_SECONDS );
 | `remember(string $key, callable $callback, int $expire)` | `mixed` | Get cached value; on miss, run callback and cache the result. WP_Error results are NOT cached. |
 | `pull(string $key, mixed $default = null)` | `mixed` | Read-once: get value and delete it in one call. Returns `$default` if missing. |
 | `get(string $key)` | `mixed` | Direct read. Returns `false` on miss or when caching is disabled. A stored `false` also reads as `false`, so use `has()` when `false` is a value you cache. |
-| `has(string $key)` | `bool` | Whether a value is stored, whatever it is -- including `false`. The only way to tell a stored `false` from a miss. |
+| `has(string $key)` | `bool` | Whether a value is stored, whatever it is, including `false`. The only way to tell a stored `false` from a miss. |
 | `set(string $key, mixed $value, int $expire)` | `bool` | Direct write. Returns `false` when caching is disabled. |
 | `delete(string $key)` | `bool` | Direct delete. |
 | `key(string $key)` | `string` | Builds the fully-prefixed transient key: prefix, storage schema, version token, optional group and its token, then your key. |
@@ -131,6 +131,8 @@ mai_cache()->flush();            // bust everything under this prefix
 
 A custom store can opt in by implementing `Mai\Cache\PrefixDelete`, which has one method: `delete_prefix( string $prefix ): int`. A store without it is skipped, and its old entries age out by TTL.
 
+Cleanup is skipped, and the old rows expire on their own, if a stored token is not the 12 lowercase hex characters mai-cache makes.
+
 ---
 
 ## Stale-while-revalidate
@@ -180,7 +182,7 @@ To test age-based staleness without waiting, replace the clock:
 $now = 1_000_000;
 Cache::set_clock( function () use ( &$now ) { return $now; } );
 
-$cache->write_swr( 'key', 'value', $version, 60 );
+$cache->write_swr( 'key', 'value', $version, 60, 3600 );
 
 $now += 61;
 $cache->read_swr( 'key', $version )['stale']; // 'age'
@@ -282,7 +284,7 @@ define( 'SCRIPT_DEBUG', true );
 
 ### Caching a `false`
 
-Values are stored in an envelope, so a stored `false` is a real hit: `remember()` will not re-run its callback for it. `get()` still returns `false` for both a miss and a stored `false`, because that is its long-standing contract -- reach for `has()` or `remember()` when the distinction matters.
+Values are stored in an envelope, so a stored `false` is a real hit: `remember()` will not re-run its callback for it. `get()` still returns `false` for both a miss and a stored `false`, because that is its long-standing contract. Use `has()` or `remember()` when the distinction matters.
 
 ```php
 $cache->set( 'has_tag', false, 300 );

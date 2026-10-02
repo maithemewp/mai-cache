@@ -6,7 +6,9 @@ use Mai\Cache\Store;
 
 /**
  * In-memory Store double. read() returns false on miss, mirroring transients.
- * Honours $expire against Cache::now(), so tests can move the clock.
+ * Honours $expire against Cache::now(), so tests can move the clock. An entry
+ * is gone only once now is strictly past write + expire, as WordPress treats a
+ * database transient (`$timeout < time()`), so it is still there in that second.
  */
 final class ArrayStore implements Store {
 	public array $data      = [];
@@ -20,7 +22,7 @@ final class ArrayStore implements Store {
 	public array $expires = [];
 
 	public function read( string $key ): mixed {
-		if ( isset( $this->expires[ $key ] ) && Cache::now() >= $this->expires[ $key ] ) {
+		if ( isset( $this->expires[ $key ] ) && Cache::now() > $this->expires[ $key ] ) {
 			unset( $this->data[ $key ], $this->expires[ $key ] );
 		}
 

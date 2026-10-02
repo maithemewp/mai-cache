@@ -58,7 +58,9 @@ final class SoftHardExpiryTest extends TestCase {
 		$v = $this->cache->version( [ 'post' ] );
 		$this->cache->write_swr( 'k', 'X', $v, 100, 1000 );
 
-		$this->at( 2000 );
+		// At 2000 the entry still exists, as a WordPress database transient does
+		// in its expiry second. It is gone one second later.
+		$this->at( 2001 );
 
 		$this->assertNull( $this->cache->read_swr( 'k', $v ) );
 	}
@@ -130,7 +132,16 @@ final class SoftHardExpiryTest extends TestCase {
 		$this->at( 1099 );
 		$this->assertTrue( $this->cache->read_swr( 'k', $v )['fresh'] );
 
+		// The known one-second difference from 0.4.0. In the second the soft
+		// deadline falls on, the store still holds the entry, so it reads as
+		// age-stale. 0.4.0 reported nothing there. It is gone one second later.
 		$this->at( 1100 );
+		$r = $this->cache->read_swr( 'k', $v );
+		$this->assertSame( 'X', $r['value'] );
+		$this->assertFalse( $r['fresh'] );
+		$this->assertSame( 'age', $r['stale'] );
+
+		$this->at( 1101 );
 		$this->assertNull( $this->cache->read_swr( 'k', $v ) );
 	}
 

@@ -41,7 +41,11 @@ final class ClockTest extends TestCase {
 		Cache::set_clock( fn() => 1009 );
 		$this->assertSame( 'v', $store->read( 'k' ) );
 
+		// Still there in the second it expires, as a database transient is.
 		Cache::set_clock( fn() => 1010 );
+		$this->assertSame( 'v', $store->read( 'k' ) );
+
+		Cache::set_clock( fn() => 1011 );
 		$this->assertFalse( $store->read( 'k' ) );
 	}
 
