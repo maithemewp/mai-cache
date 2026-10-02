@@ -193,8 +193,9 @@ class Cache {
 	 * consumer bypassing key(), which nothing shipped does.
 	 *
 	 * @since 0.4.0
+	 * @since 0.5.0 The envelope may also carry 'w' (written time) and 's' (soft deadline).
 	 *
-	 * @return array{_v: ?string, value: mixed}|null
+	 * @return array{_v: ?string, value: mixed, w?: int, s?: int}|null
 	 */
 	private function fetch( string $key ): ?array {
 		if ( ! $this->can_cache() ) {
@@ -216,13 +217,55 @@ class Cache {
 	 * tell them apart.
 	 *
 	 * @since 0.4.0
+	 * @since 0.5.0 Added $soft_ttl.
+	 *
+	 * @param string   $key      Cache key.
+	 * @param mixed    $value    Value.
+	 * @param ?string  $version  Scope version, or null for a plain entry.
+	 * @param int      $expire   Store expiry in seconds. 0 never expires.
+	 * @param int|null $soft_ttl Soft lifetime in seconds. See envelope().
+	 *
+	 * @return bool
 	 */
-	private function put( string $key, mixed $value, ?string $version, int $expire ): bool {
+	private function put( string $key, mixed $value, ?string $version, int $expire, ?int $soft_ttl = null ): bool {
 		if ( ! $this->can_cache() ) {
 			return false;
 		}
 
-		return $this->store->write( $this->key( $key ), [ '_v' => $version, 'value' => $value ], max( 0, $expire ) );
+		return $this->store->write( $this->key( $key ), self::envelope( $value, $version, $soft_ttl ), max( 0, $expire ) );
+	}
+
+	/**
+	 * Build the envelope stored for a value.
+	 *
+	 * With $soft_ttl null the envelope has only `_v` and `value`, which is all a plain
+	 * entry needs. Any int adds `w`, the time it was written. An int above 0 also adds
+	 * `s`, the soft deadline: read_swr() reports the entry as age-stale from then on. 0
+	 * adds no `s`, so a 0 lifetime never reads as age-stale.
+	 *
+	 * @since 0.5.0
+	 *
+	 * @param mixed    $value    Value.
+	 * @param ?string  $version  Scope version, or null for a plain entry.
+	 * @param int|null $soft_ttl Soft lifetime in seconds, or null for no timestamps.
+	 *
+	 * @return array{_v: ?string, value: mixed, w?: int, s?: int}
+	 */
+	private static function envelope( mixed $value, ?string $version, ?int $soft_ttl = null ): array {
+		$envelope = [ '_v' => $version, 'value' => $value ];
+
+		if ( null === $soft_ttl ) {
+			return $envelope;
+		}
+
+		$now           = self::now();
+		$envelope['w'] = $now;
+
+		if ( $soft_ttl > 0 ) {
+			$envelope['s'] = $now + $soft_ttl;
+		}
+
+		return $envelope;
 	}
 
 	/**
@@ -332,21 +375,27 @@ class Cache {
 	public function bump( string $scope ): bool {
 		return $this->store->write(
 			$this->key( '__v_' . $scope ),
-			[ '_v' => null, 'value' => self::new_token(), 'w' => self::now() ],
+			self::envelope( self::new_token(), null, 0 ),
 			0
 		);
 	}
 
 	/**
-	 * Read a versioned value. Null when cold; otherwise the value plus whether the stored
-	 * version stamp matches the supplied current version (fresh) or not (stale).
+	 * Read a versioned value. Null when cold; otherwise the value plus how current it is.
+	 *
+	 * `stale` says why the entry is not fresh. It is 'version' when the stored version no
+	 * longer matches the supplied one, and 'age' when the version matches but the entry is
+	 * past its soft lifetime. Version wins when both apply. It is null when neither does.
+	 * `fresh` is true only when `stale` is null. An entry without a soft deadline, as 2.40
+	 * and beta.4 wrote them, is never age-stale.
 	 *
 	 * @since 0.3.0
+	 * @since 0.5.0 Adds `stale` and `written`, and age-staleness.
 	 *
 	 * @param string $key     Cache key.
 	 * @param string $version Current composite version (from version()).
 	 *
-	 * @return array{value:mixed,fresh:bool}|null
+	 * @return array{value:mixed,fresh:bool,stale:'version'|'age'|null,written:int|null}|null
 	 */
 	public function read_swr( string $key, string $version ): ?array {
 		$hit = $this->fetch( $key );
@@ -358,26 +407,43 @@ class Cache {
 			return null;
 		}
 
+		$stale = null;
+
+		if ( ! hash_equals( (string) $hit['_v'], $version ) ) {
+			$stale = 'version';
+		} elseif ( isset( $hit['s'] ) && self::now() >= (int) $hit['s'] ) {
+			$stale = 'age';
+		}
+
 		return [
-			'value' => $hit['value'],
-			'fresh' => hash_equals( (string) $hit['_v'], $version ),
+			'value'   => $hit['value'],
+			'fresh'   => null === $stale,
+			'stale'   => $stale,
+			'written' => isset( $hit['w'] ) ? (int) $hit['w'] : null,
 		];
 	}
 
 	/**
 	 * Store a value with the current version stamped into the envelope.
 	 *
-	 * @since 0.3.0
+	 * `$ttl` is the soft lifetime: after it the entry reads as age-stale, but is still
+	 * served. The store's own expiry is the hard lifetime, after which the entry is gone.
+	 * With `$hard_ttl` null the hard lifetime equals the soft one. A `$hard_ttl` below
+	 * `$ttl` is raised to it. A `$ttl` of 0 or less sets no soft deadline.
 	 *
-	 * @param string $key     Cache key.
-	 * @param mixed  $value   Value.
-	 * @param string $version Current composite version.
-	 * @param int    $ttl     TTL in seconds.
+	 * @since 0.3.0
+	 * @since 0.5.0 Added $hard_ttl, and the soft deadline.
+	 *
+	 * @param string   $key      Cache key.
+	 * @param mixed    $value    Value.
+	 * @param string   $version  Current composite version.
+	 * @param int      $ttl      Soft lifetime in seconds.
+	 * @param int|null $hard_ttl Hard lifetime in seconds. Default: same as $ttl.
 	 *
 	 * @return bool
 	 */
-	public function write_swr( string $key, mixed $value, string $version, int $ttl ): bool {
-		return $this->put( $key, $value, $version, $ttl );
+	public function write_swr( string $key, mixed $value, string $version, int $ttl, ?int $hard_ttl = null ): bool {
+		return $this->put( $key, $value, $version, max( $ttl, $hard_ttl ?? $ttl ), $ttl );
 	}
 
 	/**
