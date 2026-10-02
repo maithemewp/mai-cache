@@ -134,7 +134,7 @@ final class SoftHardExpiryTest extends TestCase {
 
 		// The known one-second difference from 0.4.0. In the second the soft
 		// deadline falls on, the store still holds the entry, so it reads as
-		// age-stale. 0.4.0 reported nothing there. It is gone one second later.
+		// age-stale. 0.4.0 reported it as fresh there. It is gone one second later.
 		$this->at( 1100 );
 		$r = $this->cache->read_swr( 'k', $v );
 		$this->assertSame( 'X', $r['value'] );

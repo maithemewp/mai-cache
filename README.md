@@ -129,9 +129,9 @@ mai_cache()->flush();            // bust everything under this prefix
 
 `flush()` rotates the token, so the old entries can no longer be read. It then deletes their rows. With the default transient store and no persistent object cache, that removes the old rows from `wp_options`, 1000 rows at a time. With a persistent object cache it does nothing, because the object cache expires its own keys.
 
-A custom store can opt in by implementing `Mai\Cache\PrefixDelete`, which has one method: `delete_prefix( string $prefix ): int`. A store without it is skipped, and its old entries age out by TTL.
+`flush()` skips cleanup if a stored token is not the 12 lowercase hex characters mai-cache makes. The old rows then stay until their own expiry, and rows written without an expiry, such as version rows, stay for good.
 
-Cleanup is skipped, and the old rows expire on their own, if a stored token is not the 12 lowercase hex characters mai-cache makes.
+A custom store can opt in by implementing `Mai\Cache\PrefixDelete`, which has one method: `delete_prefix( string $prefix ): int`. A store without it is skipped. Its old entries stay until their own expiry, and entries written without an expiry, such as version rows, stay for good.
 
 ---
 
@@ -289,8 +289,8 @@ Values are stored in an envelope, so a stored `false` is a real hit: `remember()
 ```php
 $cache->set( 'has_tag', false, 300 );
 
-$cache->get( 'has_tag' );  // false -- same as a miss
-$cache->has( 'has_tag' );  // true  -- it is there
+$cache->get( 'has_tag' );  // false, same as a miss
+$cache->has( 'has_tag' );  // true, it is there
 ```
 
 ### Direct get / set when you need it
