@@ -317,14 +317,24 @@ class Cache {
 	 * SCRIPT_DEBUG) silently skipped the rotation, stale content could stay readable as fresh by
 	 * requests that can cache until the entry's TTL expired.
 	 *
+	 * The token is written in the same envelope scope_version() reads back through get(), so
+	 * the next version() call finds it instead of minting a second token over it. The write goes
+	 * through the store directly, not through put(), because put() is gated by can_cache(). The
+	 * 'w' key records when the token was written.
+	 *
 	 * @since 0.3.0
+	 * @since 0.5.0 Writes the token in an envelope, with a write time.
 	 *
 	 * @param string $scope Scope key.
 	 *
 	 * @return bool
 	 */
 	public function bump( string $scope ): bool {
-		return $this->store->write( $this->key( '__v_' . $scope ), self::new_token(), 0 );
+		return $this->store->write(
+			$this->key( '__v_' . $scope ),
+			[ '_v' => null, 'value' => self::new_token(), 'w' => self::now() ],
+			0
+		);
 	}
 
 	/**

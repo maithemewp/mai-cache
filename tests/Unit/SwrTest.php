@@ -4,6 +4,7 @@ namespace Mai\Cache\Tests\Unit;
 use Brain\Monkey\Functions;
 use Mai\Cache\Cache;
 use Mai\Cache\Store;
+use Mai\Cache\Tests\Support\CountingStore;
 use Mai\Cache\Tests\TestCase;
 
 final class SwrTest extends TestCase {
@@ -81,6 +82,43 @@ final class SwrTest extends TestCase {
 			'bump() must write the post token despite the can_cache() gate'
 		);
 	}
+
+	public function test_bump_token_is_what_version_returns(): void {
+		Functions\when( 'apply_filters' )->alias( fn( $tag, $value = null ) => $value );
+
+		$store = new CountingStore();
+		$cache = new Cache( 'mai', $store );
+		$key   = $cache->key( '__v_post' );
+
+		$cache->bump( 'post' );
+
+		// version() must read the bumped token back, not mint a second one over it.
+		$version = $cache->version( [ 'post' ] );
+
+		$this->assertSame( 1, $store->writes[ $key ], 'bump() plus version() should write the token key once' );
+		$this->assertSame( $store->inner->data[ $key ]['value'], $version );
+	}
+
+	public function test_bump_writes_even_when_cannot_cache(): void {
+		Cache::set_clock( fn() => 1000 );
+
+		$store                   = new CountingStore();
+		$store->inner->available = false;
+		$cache                   = new Cache( 'mai', $store );
+		$key                     = $cache->key( '__v_post' );
+
+		$this->assertFalse( $cache->can_cache() );
+		$this->assertTrue( $cache->bump( 'post' ) );
+		$this->assertSame( 1, $store->writes[ $key ] );
+
+		// Envelope shape: no version stamp, the token as the value, the write time.
+		$stored = $store->inner->data[ $key ];
+		$this->assertNull( $stored['_v'] );
+		$this->assertMatchesRegularExpression( '/^[0-9a-f]{12}$/', $stored['value'] );
+		$this->assertSame( 1000, $stored['w'] );
+		$this->assertArrayNotHasKey( $key, $store->inner->expires, 'the token must never expire' );
+	}
+
 	public function test_a_plain_entry_is_invisible_to_read_swr(): void {
 		$c = $this->cache();
 		$c->set( 'k', 'plain', 3600 );
