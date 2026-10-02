@@ -282,20 +282,40 @@ class Cache {
 
 	/**
 	 * Invalidate the current scope by rotating its version token: the whole
-	 * prefix when ungrouped, or just this group when grouped. Orphaned entries
-	 * become unreachable and age out by TTL.
+	 * prefix when ungrouped, or just this group when grouped. The old entries
+	 * become unreachable, and a store that implements PrefixDelete then deletes
+	 * them, version rows included. A store without it leaves them to age out by
+	 * TTL, as before.
+	 *
+	 * The old prefix is the key prefix up to and including the token being
+	 * rotated. For a group that is "{prefix}_s1_{root token}_{group}_{old group token}_".
+	 * For the whole prefix it is "{prefix}_s1_{old root token}_", which covers
+	 * every group.
 	 *
 	 * Intentionally not gated by can_cache() -- same rationale as delete().
 	 *
 	 * @since 0.2.0
+	 * @since 0.5.0 Deletes the old token's rows from a store that implements PrefixDelete.
 	 */
 	public function flush(): bool {
 		$scope = $this->scope();
+
+		// key() with an empty user key ends in the joining underscore, which makes it
+		// exactly the prefix of every key under the current tokens. Read it before the
+		// rotation, and only when it will be used: key() mints a token that is missing.
+		$old_prefix = $this->store instanceof PrefixDelete ? $this->key( '' ) : null;
+
 		$token = self::new_token();
 
 		self::$tokens[ $scope ] = $token;
 
-		return $this->store->write( $this->token_key( $scope ), $token, 0 );
+		$written = $this->store->write( $this->token_key( $scope ), $token, 0 );
+
+		if ( null !== $old_prefix ) {
+			$this->store->delete_prefix( $old_prefix );
+		}
+
+		return $written;
 	}
 
 	/**

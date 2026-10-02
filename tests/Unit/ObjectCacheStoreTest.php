@@ -28,4 +28,9 @@ final class ObjectCacheStoreTest extends TestCase {
 		Functions\when( 'wp_using_ext_object_cache' )->justReturn( false );
 		$this->assertFalse( ( new ObjectCacheStore() )->available() );
 	}
+
+	public function test_delete_prefix_does_nothing_because_the_object_cache_expires_its_own_keys(): void {
+		Functions\expect( 'wp_cache_delete' )->never();
+		$this->assertSame( 0, ( new ObjectCacheStore() )->delete_prefix( 'mai_s1_abc_' ) );
+	}
 }
