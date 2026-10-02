@@ -135,6 +135,7 @@ final class FlushCleanupTest extends TestCase {
 			'not hex'         => [ '0123456789gz' ],
 			'a LIKE wildcard' => [ '0123456789a%' ],
 			'an underscore'   => [ '01234_56789a' ],
+			'a final newline' => [ "0123456789ab\n" ],
 		];
 	}
 
