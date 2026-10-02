@@ -4,6 +4,7 @@ namespace Mai\Cache\Tests\Unit;
 use Brain\Monkey\Functions;
 use Mai\Cache\Tests\TestCase;
 use Mai\Cache\TransientStore;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class TransientStoreTest extends TestCase {
 	protected function tearDown(): void {
@@ -16,7 +17,7 @@ final class TransientStoreTest extends TestCase {
 	 * each call and records the prepared SQL; prepare() and esc_like() only need
 	 * to behave well enough to show what the store passes them.
 	 *
-	 * @param int[] $results Return values for successive query() calls.
+	 * @param array<int|false> $results Return values for successive query() calls.
 	 */
 	private function fakeWpdb( array $results ): object {
 		return $GLOBALS['wpdb'] = new class( $results ) {
@@ -35,7 +36,7 @@ final class TransientStoreTest extends TestCase {
 				return vsprintf( str_replace( '%s', "'%s'", $query ), $args );
 			}
 
-			public function query( string $sql ): int {
+			public function query( string $sql ): int|bool {
 				$this->queries[] = $sql;
 				return array_shift( $this->results ) ?? 0;
 			}
@@ -90,6 +91,91 @@ final class TransientStoreTest extends TestCase {
 		[ $query, $args ] = $wpdb->prepared[0];
 
 		$this->assertSame( 'DELETE FROM wp_options WHERE option_name LIKE %s OR option_name LIKE %s LIMIT 1000', $query );
-		$this->assertSame( [ '_transient_mai\\_s1\\_abc\\_%', '_transient_timeout_mai\\_s1\\_abc\\_%' ], $args );
+		$this->assertSame( [ '\\_transient\\_mai\\_s1\\_abc\\_%', '\\_transient\\_timeout\\_mai\\_s1\\_abc\\_%' ], $args );
+	}
+
+	public function test_delete_prefix_pattern_matches_only_that_prefix(): void {
+		Functions\when( 'wp_using_ext_object_cache' )->justReturn( false );
+		Functions\when( 'wp_cache_delete' )->justReturn( true );
+
+		$wpdb = $this->fakeWpdb( [ 0 ] );
+
+		( new TransientStore() )->delete_prefix( 'mai_s1_abc_' );
+
+		[ $value_like, $timeout_like ] = $wpdb->prepared[0][1];
+
+		// The two rows of a transient under the prefix match.
+		$this->assertTrue( $this->likeMatches( $value_like, '_transient_mai_s1_abc_thing' ) );
+		$this->assertTrue( $this->likeMatches( $timeout_like, '_transient_timeout_mai_s1_abc_thing' ) );
+
+		// A LIKE wildcard left unescaped anywhere would match these. "_" matches any one character.
+		$this->assertFalse( $this->likeMatches( $value_like, 'xtransientxmai_s1_abc_thing' ) );
+		$this->assertFalse( $this->likeMatches( $value_like, '_transient_maixs1xabc_thing' ) );
+		$this->assertFalse( $this->likeMatches( $value_like, '_transient_mai_s1_abcXthing' ) );
+
+		// Another token, the token row, and the other prefix's rows do not match.
+		$this->assertFalse( $this->likeMatches( $value_like, '_transient_mai_s1_abd_thing' ) );
+		$this->assertFalse( $this->likeMatches( $value_like, '_transient_mai__token' ) );
+		$this->assertFalse( $this->likeMatches( $value_like, '_transient_timeout_mai_s1_abc_thing' ) );
+		$this->assertFalse( $this->likeMatches( $timeout_like, '_transient_mai_s1_abc_thing' ) );
+	}
+
+	#[DataProvider( 'unsafe_prefixes' )]
+	public function test_delete_prefix_does_nothing_for_an_empty_prefix_or_one_without_a_trailing_underscore( string $prefix ): void {
+		Functions\when( 'wp_using_ext_object_cache' )->justReturn( false );
+		Functions\expect( 'wp_cache_delete' )->never();
+
+		$wpdb = $this->fakeWpdb( [ 5 ] );
+
+		$this->assertSame( 0, ( new TransientStore() )->delete_prefix( $prefix ) );
+		$this->assertSame( [], $wpdb->queries );
+		$this->assertSame( [], $wpdb->prepared );
+	}
+
+	/**
+	 * @return array<string,array{string}>
+	 */
+	public static function unsafe_prefixes(): array {
+		return [
+			'empty'                        => [ '' ],
+			'no trailing underscore'       => [ 'mai_s1_abc' ],
+			'a bare prefix'                => [ 'mai' ],
+			'underscore only at the start' => [ '_mai' ],
+		];
+	}
+
+	public function test_delete_prefix_stops_when_the_query_fails(): void {
+		Functions\when( 'wp_using_ext_object_cache' )->justReturn( false );
+		Functions\expect( 'wp_cache_delete' )->once()->with( 'alloptions', 'options' );
+
+		// A failed $wpdb->query() returns false. It must end the loop, not repeat it.
+		$wpdb = $this->fakeWpdb( [ false, 5 ] );
+
+		$this->assertSame( 0, ( new TransientStore() )->delete_prefix( 'mai_s1_abc_' ) );
+		$this->assertCount( 1, $wpdb->queries );
+	}
+
+	/**
+	 * Whether a SQL LIKE pattern matches a value. A backslash makes the next character
+	 * literal, "_" is any one character and "%" is any run of characters.
+	 */
+	private function likeMatches( string $pattern, string $value ): bool {
+		$regex = '';
+
+		for ( $i = 0, $length = strlen( $pattern ); $i < $length; $i++ ) {
+			$char = $pattern[ $i ];
+
+			if ( '\\' === $char && $i + 1 < $length ) {
+				$regex .= preg_quote( $pattern[ ++$i ], '/' );
+			} elseif ( '_' === $char ) {
+				$regex .= '.';
+			} elseif ( '%' === $char ) {
+				$regex .= '.*';
+			} else {
+				$regex .= preg_quote( $char, '/' );
+			}
+		}
+
+		return 1 === preg_match( '/^' . $regex . '$/s', $value );
 	}
 }

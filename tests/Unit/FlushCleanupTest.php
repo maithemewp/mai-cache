@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 namespace Mai\Cache\Tests\Unit;
 
 use Brain\Monkey\Functions;
@@ -6,11 +8,24 @@ use Mai\Cache\Cache;
 use Mai\Cache\Tests\Support\ArrayStore;
 use Mai\Cache\Tests\Support\PrefixRecordingStore;
 use Mai\Cache\Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class FlushCleanupTest extends TestCase {
 	private function allowCaching(): void {
 		Functions\when( 'apply_filters' )->alias( fn( $tag, $value = null ) => $value );
 		Functions\when( 'is_wp_error' )->justReturn( false );
+	}
+
+	/**
+	 * The token rows are named through token_key(), not key(), so a prefix delete
+	 * must never reach them.
+	 */
+	private function assertTokenRowsOutsidePrefix( string $prefix ): void {
+		foreach ( [ 'mai__token', 'mai_grid__token' ] as $token_row ) {
+			$this->assertStringStartsNotWith( $prefix, $token_row );
+			$this->assertStringStartsNotWith( '_transient_' . $prefix, '_transient_' . $token_row );
+			$this->assertStringStartsNotWith( '_transient_timeout_' . $prefix, '_transient_timeout_' . $token_row );
+		}
 	}
 
 	public function test_group_flush_deletes_old_group_prefix(): void {
@@ -38,6 +53,7 @@ final class FlushCleanupTest extends TestCase {
 		$this->assertArrayHasKey( $old_key, $store->inner->data );
 		$this->assertStringStartsNotWith( $prefix, $other_group );
 		$this->assertStringStartsNotWith( $prefix, $grid->key( 'a' ) );
+		$this->assertTokenRowsOutsidePrefix( $prefix );
 	}
 
 	public function test_root_flush_deletes_old_root_prefix(): void {
@@ -63,6 +79,7 @@ final class FlushCleanupTest extends TestCase {
 		$this->assertStringStartsWith( $prefix, $old_group_key );
 		$this->assertStringStartsNotWith( $prefix, $base->key( 'a' ) );
 		$this->assertStringStartsNotWith( $prefix, $grid->key( 'b' ) );
+		$this->assertTokenRowsOutsidePrefix( $prefix );
 	}
 
 	public function test_prefix_is_deleted_after_the_token_rotates(): void {
@@ -103,5 +120,76 @@ final class FlushCleanupTest extends TestCase {
 
 		$this->assertTrue( $cache->flush() );
 		$this->assertFalse( $cache->has( 'a' ) );
+	}
+
+	/**
+	 * Tokens that are not 12 lowercase hex characters.
+	 *
+	 * @return array<string,array{string}>
+	 */
+	public static function bad_tokens(): array {
+		return [
+			'too short'       => [ 'abc' ],
+			'too long'        => [ '0123456789abcd' ],
+			'uppercase'       => [ '0123456789AB' ],
+			'not hex'         => [ '0123456789gz' ],
+			'a LIKE wildcard' => [ '0123456789a%' ],
+			'an underscore'   => [ '01234_56789a' ],
+		];
+	}
+
+	#[DataProvider( 'bad_tokens' )]
+	public function test_root_flush_skips_cleanup_when_the_root_token_is_not_12_lowercase_hex( string $bad ): void {
+		$this->allowCaching();
+		$store = new PrefixRecordingStore();
+		$base  = new Cache( 'mai', $store );
+
+		$store->write( 'mai__token', $bad, 0 );
+
+		$this->assertTrue( $base->flush() );
+		$this->assertSame( [], $store->deleted );
+
+		// The token still rotated, to a well-formed one.
+		$this->assertMatchesRegularExpression( '/^[0-9a-f]{12}$/', $store->read( 'mai__token' ) );
+	}
+
+	#[DataProvider( 'bad_tokens' )]
+	public function test_group_flush_skips_cleanup_when_the_group_token_is_not_12_lowercase_hex( string $bad ): void {
+		$this->allowCaching();
+		$store = new PrefixRecordingStore();
+		$grid  = ( new Cache( 'mai', $store ) )->group( 'grid' );
+
+		// Seeded before the cache first reads it. Cache memoizes a token for the request.
+		$store->write( 'mai_grid__token', $bad, 0 );
+
+		$this->assertTrue( $grid->flush() );
+		$this->assertSame( [], $store->deleted );
+		$this->assertMatchesRegularExpression( '/^[0-9a-f]{12}$/', $store->read( 'mai_grid__token' ) );
+	}
+
+	#[DataProvider( 'bad_tokens' )]
+	public function test_group_flush_skips_cleanup_when_the_root_token_is_not_12_lowercase_hex( string $bad ): void {
+		$this->allowCaching();
+		$store = new PrefixRecordingStore();
+		$grid  = ( new Cache( 'mai', $store ) )->group( 'grid' );
+
+		$store->write( 'mai__token', $bad, 0 );
+
+		$this->assertTrue( $grid->flush() );
+		$this->assertSame( [], $store->deleted );
+	}
+
+	public function test_an_empty_stored_token_is_replaced_and_cleanup_still_runs(): void {
+		$this->allowCaching();
+		$store = new PrefixRecordingStore();
+		$base  = new Cache( 'mai', $store );
+
+		// token() treats an empty stored token as missing and mints a well-formed one.
+		$store->write( 'mai__token', '', 0 );
+
+		$base->flush();
+
+		$this->assertCount( 1, $store->deleted );
+		$this->assertMatchesRegularExpression( '/^mai_s1_[0-9a-f]{12}_$/', $store->deleted[0] );
 	}
 }

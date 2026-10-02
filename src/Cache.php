@@ -53,6 +53,15 @@ class Cache {
 	 */
 	private const SCHEMA = 's1';
 
+	/**
+	 * The only shape new_token() has produced: 12 lowercase hex characters. flush()
+	 * deletes rows by token prefix, so it deletes only when every token in the prefix
+	 * has this shape.
+	 *
+	 * @since 0.5.0
+	 */
+	private const TOKEN_PATTERN = '/^[0-9a-f]{12}$/';
+
 	private string $prefix;
 	private Store $store;
 	private string $group = '';
@@ -290,7 +299,10 @@ class Cache {
 	 * The old prefix is the key prefix up to and including the token being
 	 * rotated. For a group that is "{prefix}_s1_{root token}_{group}_{old group token}_".
 	 * For the whole prefix it is "{prefix}_s1_{old root token}_", which covers
-	 * every group.
+	 * every group. Rows are deleted only when each token in that prefix is the
+	 * 12 lowercase hex characters new_token() makes. A stored token of any other
+	 * shape could stand for a broader prefix than one retired token, so cleanup is
+	 * skipped and the old rows age out by TTL. The token still rotates.
 	 *
 	 * Intentionally not gated by can_cache() -- same rationale as delete().
 	 *
@@ -300,10 +312,9 @@ class Cache {
 	public function flush(): bool {
 		$scope = $this->scope();
 
-		// key() with an empty user key ends in the joining underscore, which makes it
-		// exactly the prefix of every key under the current tokens. Read it before the
-		// rotation, and only when it will be used: key() mints a token that is missing.
-		$old_prefix = $this->store instanceof PrefixDelete ? $this->key( '' ) : null;
+		// Read the old prefix before the rotation, and only when it will be used: reading
+		// a token mints one that is missing.
+		$old_prefix = $this->store instanceof PrefixDelete ? $this->retired_prefix() : null;
 
 		$token = self::new_token();
 
@@ -614,6 +625,35 @@ class Cache {
 	 */
 	private function token_key( string $scope ): string {
 		return $scope . '__token';
+	}
+
+	/**
+	 * The key prefix that rotating the current scope's token retires, or null when
+	 * it is not safe to delete by it.
+	 *
+	 * key() with an empty user key ends in the joining underscore, which makes it
+	 * exactly the prefix of every key under the current tokens. Its tokens are read
+	 * here the way key() reads them, through token(): the root token, and for a group
+	 * the group token. A token that is not 12 lowercase hex characters gives null.
+	 *
+	 * @since 0.5.0
+	 *
+	 * @return string|null
+	 */
+	private function retired_prefix(): ?string {
+		$tokens = [ $this->token( $this->prefix ) ];
+
+		if ( '' !== $this->group ) {
+			$tokens[] = $this->token( $this->scope() );
+		}
+
+		foreach ( $tokens as $token ) {
+			if ( 1 !== preg_match( self::TOKEN_PATTERN, $token ) ) {
+				return null;
+			}
+		}
+
+		return $this->key( '' );
 	}
 
 	/**
