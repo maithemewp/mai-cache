@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: 
 
 - **Loaded by [maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader)**, through a `mai-package.php` declaration, instead of this package's own bootstrap. `init.php` and `Mai_Cache_Bootstrap` are gone. Requires `maithemewp/mai-package-loader` `^0.1`.
 - **The test suite runs with plain `vendor/bin/phpunit`.** The `ABSPATH` workaround existed only for the old bootstrap's guard.
+- **No `ABSPATH` guard in the class files.** They only define classes, and the guard made a test suite, or anything loading them outside WordPress, end silently with exit code 0 and no output.
 
 ### Fixed
 

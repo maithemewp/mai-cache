@@ -9,7 +9,6 @@ Safe to bundle in several plugins on one WordPress site. Each plugin can ship it
 ## Requirements
 
 - **PHP 8.1+**
-- **WordPress.** Some class files exit when `ABSPATH` is not defined.
 - **[maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader)**, which Composer installs with it and which loads its classes.
 
 ---
