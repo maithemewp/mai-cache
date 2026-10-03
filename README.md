@@ -9,6 +9,7 @@ Safe to bundle in several plugins on one WordPress site. Each plugin can ship it
 ## Requirements
 
 - **PHP 8.1+**
+- **WordPress.** Some class files exit when `ABSPATH` is not defined.
 - **[maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader)**, which Composer installs with it and which loads its classes.
 
 ---
@@ -29,17 +30,21 @@ Add both GitHub repositories to the plugin or theme's `composer.json`, and requi
 }
 ```
 
-Then `composer install`, and require `vendor/autoload.php`. Use the classes from a hook, not while the plugin's own file is loading, so every plugin's copy is known first.
+Then `composer install`, and require `vendor/autoload.php`. The newest copy on the site loads from the first use, even while plugins are still loading.
 
 ### Local development
+
+List the loader's working copy too. Composer only reads repositories from the plugin itself, and only honours `@dev` on the plugin's own requirements, so both are listed:
 
 ```json
 {
     "repositories": [
-        { "type": "path", "url": "~/LocalPackages/mai-cache" }
+        { "type": "path", "url": "~/LocalPackages/mai-cache" },
+        { "type": "path", "url": "~/LocalPackages/mai-package-loader" }
     ],
     "require": {
-        "maithemewp/mai-cache": "*"
+        "maithemewp/mai-cache": "@dev",
+        "maithemewp/mai-package-loader": "@dev"
     }
 }
 ```
@@ -394,7 +399,7 @@ Pair this with `delete()` calls on `save_post` so the cache invalidates correctl
 
 ## Several plugins bundling it
 
-Every copy ships a `mai-package.php` declaring its version, and mai-package-loader loads the newest copy of the library on the site, whichever plugin loads first. Up to 0.4.0, copies used their own bootstrap, which in practice always loaded the first plugin's copy, because Composer runs a package's `files` entry only once per request.
+Every copy ships a `mai-package.php` declaring its version, and mai-package-loader loads the newest copy of the library on the site, whichever plugin loads first. Up to 0.5.0, copies used their own bootstrap, which in practice always loaded the first plugin's copy, because Composer runs a package's `files` entry only once per request.
 
 Those older copies still work alongside this one. The loader answers before their bootstrap does, so this copy wins wherever both are installed, unless an older plugin uses a `Mai\Cache` class while its own file is loading.
 
