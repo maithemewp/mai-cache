@@ -2,28 +2,34 @@
 
 `remember()`-pattern wrapper around WordPress transients. Auto-bypasses caching during `SCRIPT_DEBUG` so you never debug stale data.
 
-Versioned and drop-in safe: multiple plugins on the same WordPress install can each bundle their own copy of `mai-cache`; the highest registered version wins at runtime via a shared bootstrap registry (same pattern as [maithemewp/mai-logger](https://github.com/maithemewp/mai-logger)).
+Safe to bundle in several plugins on one WordPress site. Each plugin can ship its own copy, and [maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader) loads the newest one, whichever plugin loads first.
 
 ---
 
 ## Requirements
 
 - **PHP 8.1+**
-- **WordPress** (uses `ABSPATH` as a load guard; bootstrap autoload runs from Composer's `vendor/autoload.php`).
+- **[maithemewp/mai-package-loader](https://github.com/maithemewp/mai-package-loader)**, which Composer installs with it and which loads its classes.
 
 ---
 
 ## Installation
 
+Add both GitHub repositories to the plugin or theme's `composer.json`, and require the library. Composer only reads repository lists from the plugin itself, so the loader's repository is listed too.
+
 ```json
 {
+    "repositories": [
+        { "type": "vcs", "url": "https://github.com/maithemewp/mai-cache" },
+        { "type": "vcs", "url": "https://github.com/maithemewp/mai-package-loader" }
+    ],
     "require": {
-        "maithemewp/mai-cache": "^0.1"
+        "maithemewp/mai-cache": "^0.6"
     }
 }
 ```
 
-`composer install`. The bootstrap runs automatically when `vendor/autoload.php` is required.
+Then `composer install`, and require `vendor/autoload.php`. Use the classes from a hook, not while the plugin's own file is loading, so every plugin's copy is known first.
 
 ### Local development
 
@@ -386,28 +392,11 @@ Pair this with `delete()` calls on `save_post` so the cache invalidates correctl
 
 ---
 
-## Versioned coexistence (advanced)
+## Several plugins bundling it
 
-When more than one plugin on the same WP install bundles `mai-cache`, all versions register themselves with `Mai_Cache_Bootstrap`. On first request for any `Mai\Cache\*` class, the autoloader picks the highest registered version and loads from that version's `src/`.
+Every copy ships a `mai-package.php` declaring its version, and mai-package-loader loads the newest copy of the library on the site, whichever plugin loads first. Up to 0.4.0, copies used their own bootstrap, which in practice always loaded the first plugin's copy, because Composer runs a package's `files` entry only once per request.
 
-```
-Plugin A (vendor/maithemewp/mai-cache @ 0.1.0)
-Plugin B (vendor/maithemewp/mai-cache @ 0.2.0)
-                  │
-                  ▼
-       Both register on autoload
-                  │
-                  ▼
-       First Mai\Cache\Cache request
-                  │
-                  ▼
-       Autoloader picks 0.2.0's src/
-                  │
-                  ▼
-       Both plugins use 0.2.0
-```
-
-**Bootstrap protocol is frozen.** Never change `Mai_Cache_Bootstrap::register()`'s signature; old bundled copies in the wild will call the original signature on whichever bootstrap loaded first.
+Those older copies still work alongside this one. The loader answers before their bootstrap does, so this copy wins wherever both are installed, unless an older plugin uses a `Mai\Cache` class while its own file is loading.
 
 ---
 
