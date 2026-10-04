@@ -4,7 +4,7 @@ All notable changes to `mai-cache` are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: [Semantic Versioning](https://semver.org/).
 
-## [0.6.0] - unreleased
+## [0.6.0] - 2026-10-03
 
 0.5.0 was never tagged, but mai-engine 2.40 bundles a copy that registers itself as 0.5.0. This release is 0.6.0 so it loads ahead of that copy, and it includes everything listed for 0.5.0 below.
 
