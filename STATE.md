@@ -3,16 +3,16 @@ Updated: 2026-11-03 by Claude (Opus 5.5)
 
 ## Now
 
-0.6.1 is committed on `develop`, not pushed or tagged. It fixes multisite: version tokens were remembered per request by scope only, so a bump or flush after `switch_to_blog()` wrote under the first site's tokens and the target site never saw it. Tokens are now remembered per site ID. Single sites are unchanged: `get_current_blog_id()` is always 1 there. `mai-package.php` says 0.6.1; CHANGES.md says `[0.6.1] - unreleased`.
+0.6.1 is released: `Release 0.6.1` on `main` and `develop`, tagged `v0.6.1`. It fixes multisite: version tokens were remembered per request by scope only, so a bump or flush after `switch_to_blog()` wrote under the first site's tokens and the target site never saw it. Tokens are now remembered per site ID. Single sites are unchanged: `get_current_blog_id()` is always 1 there. `mai-package.php` and CHANGES.md say 0.6.1.
 
 ## Next
 
-1. With Mike's yes: date the changelog in a `Release 0.6.1` commit, fast-forward `main` to `develop`, push both, tag `v0.6.1`.
+1. Done: released 0.6.1.
 2. In mai-engine: `composer update maithemewp/mai-cache`, then `composer dump-autoload --no-dev`, then commit, so mai-engine 2.41.1 ships it.
 
 ## Blocked / waiting on
 
-Mike's yes to push and tag.
+Nothing.
 
 ## Verify
 

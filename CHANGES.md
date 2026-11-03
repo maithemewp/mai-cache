@@ -4,7 +4,7 @@ All notable changes to `mai-cache` are documented here.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · Versioning: [Semantic Versioning](https://semver.org/).
 
-## [0.6.1] - unreleased
+## [0.6.1] - 2026-11-03
 
 ### Fixed
 
