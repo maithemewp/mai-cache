@@ -8,6 +8,10 @@ abstract class TestCase extends BaseTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+
+		// Cache reads the site ID for every token. Once any test mocks it, Brain Monkey leaves it
+		// defined, so every test needs an answer. SwitchedBlogTest replaces this one.
+		Monkey\Functions\when( 'get_current_blog_id' )->justReturn( 1 );
 	}
 
 	protected function tearDown(): void {
